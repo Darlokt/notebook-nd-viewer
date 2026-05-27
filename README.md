@@ -2,6 +2,7 @@
 
 ![Status](https://img.shields.io/badge/Status-in_development-yellow)
 [![Latest Release](https://img.shields.io/github/v/release/Darlokt/notebook-nd-viewer?display_name=tag&sort=semver)](https://github.com/Darlokt/notebook-nd-viewer/releases)
+[![PyPI](https://img.shields.io/pypi/v/notebook-nd-viewer.svg)](https://pypi.org/project/notebook-nd-viewer/)
 [![CI](https://github.com/Darlokt/notebook-nd-viewer/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Darlokt/notebook-nd-viewer/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/Coverage-90%25%2B-brightgreen)](https://github.com/Darlokt/notebook-nd-viewer/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python)](https://www.python.org/)
