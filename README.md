@@ -150,7 +150,7 @@ Parameters:
 This project uses `uv` for dependency management:
 
 ```bash
-uv sync --dev
+uv sync
 ```
 
 Run the main quality gates before submitting changes:
