@@ -1,0 +1,33 @@
+# .pre-commit-config.yaml
+repos:
+  - repo: builtin
+    hooks:
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: trailing-whitespace
+      - id: check-case-conflict
+  - repo: https://github.com/tox-dev/pyproject-fmt
+    rev: "v2.21.2"
+    hooks:
+      - id: pyproject-fmt
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check
+        language: system
+        pass_filenames: false
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        pass_filenames: false
+
+      - id: pytest
+        name: pytest
+        entry: uv run pytest
+        language: system
+        pass_filenames: false

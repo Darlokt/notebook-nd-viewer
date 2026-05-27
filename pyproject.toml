@@ -1,0 +1,117 @@
+[build-system]
+build-backend = "uv_build"
+requires = [ "uv-build>=0.11.8,<0.12" ]
+
+[project]
+name = "notebook-nd-viewer"
+version = "0.2.0"
+description = "Minimal ndarray viewer for Jupyter notebooks, for interactive exploration of image data in notebooks."
+readme = "README.md"
+license = "BSD-3-Clause-Clear"
+license-files = [ "LICENSE" ]
+authors = [ { name = "Kilian Paul" } ]
+requires-python = ">=3.11"
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Education",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Image Processing",
+  "Topic :: Scientific/Engineering :: Visualization",
+  "Typing :: Typed",
+]
+dependencies = [
+  "ipywidgets>=8",
+  "matplotlib>=3.8.4",
+  "numpy>=2.1",
+]
+urls.Issues = "https://github.com/Darlokt/notebook-nd-viewer/issues"
+urls.Source = "https://github.com/Darlokt/notebook-nd-viewer"
+
+[dependency-groups]
+dev = [
+  "imagecodecs>=2026.3.6", # needed for testing with TIFF images, but not required for the viewer itself
+  "ipykernel>=7.2",        # needed for testing in notebooks, but not required for the viewer itself
+  "jupytext>=1.19.3",      # needed for testing notebooks in both .ipynb and .py formats, but not required for the viewer itself
+  "prek==0.4.3",
+  "pytest==9.0.3",
+  "pytest-cov==7.1",
+  "pytest-mock==3.15.1",
+  "ruff==0.15.14",
+  "tifffile>=2026.3.3",    # needed for testing with TIFF images, but not required for the viewer itself
+  "ty==0.0.39",
+]
+
+[tool.uv]
+build-backend.module-name = "nb_nd_viewer"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = [ "src" ]
+include = [
+  "notebooks/**/*.ipynb",
+  "notebooks/**/*.py",
+  "src/**/*.py",
+  "tests/**/*.py",
+]
+fix = true
+format.indent-style = "space"
+format.quote-style = "double"
+format.line-ending = "lf"
+lint.select = [ "ALL" ]
+lint.ignore = [
+  "COM812", # conflicts with formatter
+]
+lint.per-file-ignores."notebooks/**/*.ipynb" = [
+  "D100",   # notebooks are documented with markdown cells
+  "EM101",  # String literals in notebooks are acceptable for exploratory code in an exception
+  "INP001", # analysis notebooks are not importable package modules
+  "T201",   # exploratory notebooks may print small diagnostics
+  "TRY003", # notebooks may have cells with try/except blocks for exploratory code, assigning them directly is acceptable for simplicity
+]
+lint.per-file-ignores."notebooks/**/*.py" = [
+  "D100",   # Jupytext notebook scripts are documented with markdown cells
+  "E501",   # Jupytext markdown cells can exceed the code line length
+  "EM101",  # String literals in notebooks are acceptable for exploratory code in an exception
+  "ERA001", # Jupytext metadata is represented as commented YAML
+  "INP001", # analysis notebook scripts are not importable package modules
+  "T201",   # exploratory notebooks may print small diagnostics
+  "TRY003", # notebooks may have cells with try/except blocks for exploratory code, assigning them directly is acceptable for simplicity
+]
+lint.per-file-ignores."tests/**/*.py" = [
+  "D102",    # test names describe behavior; method docstrings add noise
+  "PLR2004", # small numeric examples are clearer inline in tests
+  "S101",    # pytest uses assert rewriting
+]
+lint.pydocstyle.convention = "numpy"
+
+[tool.ty]
+src.include = [ "src/", "tests/" ]
+
+[tool.pytest]
+ini_options.minversion = "8.0"
+ini_options.addopts = "-ra --strict-config --strict-markers -m 'not external'"
+ini_options.testpaths = [ "tests" ]
+ini_options.markers = [
+  """\
+  external: tests that depend on external data such as test images, which are not included in the repository and may \
+  require manual setup\
+  """,
+  "integration: multi-module workflow, adapter, or public API contract tests",
+  "unit: tests for individual functions or classes, typically within a single module",
+]
+
+[tool.coverage]
+run.branch = true
+run.source = [ "nb_nd_viewer" ]
+report.fail_under = 90
+report.show_missing = true
+report.skip_covered = false

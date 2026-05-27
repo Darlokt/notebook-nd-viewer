@@ -1,0 +1,167 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_LINK_MODE: copy
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    name: Test Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: "0.11.16"
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
+
+      - name: Install dependencies
+        run: uv sync --locked --dev
+
+      - name: Run tests
+        if: matrix.python-version != '3.11'
+        run: uv run --frozen pytest
+
+      - name: Run tests with coverage
+        if: matrix.python-version == '3.11'
+        run: |
+          uv run --frozen pytest \
+            --cov=nb_nd_viewer \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-report=term-missing \
+            --cov-fail-under=90
+
+      - name: Upload coverage artifacts
+        if: always() && matrix.python-version == '3.11'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-python-3.11
+          path: |
+            coverage.xml
+            htmlcov/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: "0.11.16"
+          python-version: "3.11"
+          enable-cache: true
+          prune-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
+
+      - name: Install dependencies
+        run: uv sync --locked --dev
+
+      - name: Lint
+        run: uv run --frozen ruff check src tests notebooks
+
+      - name: Format check
+        run: uv run --frozen ruff format --check src tests notebooks
+
+      - name: Type check
+        run: uv run --frozen ty check
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: "0.11.16"
+          python-version: "3.13"
+          enable-cache: true
+          prune-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
+
+      - name: Install dependencies
+        run: uv sync --locked --dev
+
+      - name: Build distributions
+        run: uv build --no-sources
+
+      - name: Smoke test wheel and source distribution
+        run: |
+          set -euo pipefail
+
+          wheels=(dist/*.whl)
+          sdists=(dist/*.tar.gz)
+
+          test "${#wheels[@]}" -ge 1
+          test "${#sdists[@]}" -eq 1
+
+          uv run --isolated --no-project --with "${wheels[0]}" python -c "import nb_nd_viewer"
+          uv run --isolated --no-project --with "${sdists[0]}" python -c "import nb_nd_viewer"
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-python-package-distributions
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
