@@ -188,7 +188,7 @@ uv run prek install
 
 ```text
 notebook-nd-viewer/
-├── src/nb_nd_viewer/    # importable package
+├── src/nb_nd_viewer/    # importable package and private viewer helpers
 ├── tests/unit/          # focused unit tests
 ├── tests/integration/   # public API and workflow tests
 ├── notebooks/           # Example notebooks
