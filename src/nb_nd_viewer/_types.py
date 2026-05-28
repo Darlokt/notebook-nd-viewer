@@ -12,9 +12,14 @@ if TYPE_CHECKING:
     import ipywidgets as widgets
 
 DisplayMode = Literal["single", "overlay", "side-by-side"]
+LabeledImageDisplayMode = Literal["single", "overlay"]
 RenderDownsamplingMode = Literal["stride", "nearest", "bilinear", "bicubic", "none"]
+LabelKind = Literal["binary", "integer"]
+LabelKindSetting = Literal["auto", "binary", "integer"]
 ImageScalar: TypeAlias = np.bool_ | np.integer[Any] | np.floating[Any]
 ImageArray: TypeAlias = NDArray[ImageScalar]
+LabelScalar: TypeAlias = np.bool_ | np.integer[Any]
+LabelArray: TypeAlias = NDArray[LabelScalar]
 
 
 @dataclass(frozen=True)
@@ -49,4 +54,14 @@ class _ChannelControls:
     absolute_slice_minmax: widgets.Checkbox
     absolute_slice_button: widgets.Button
     percentile: widgets.FloatRangeSlider
+    box: widgets.VBox
+
+
+@dataclass(frozen=True)
+class _LabelControls:
+    """Controls that affect one label overlay."""
+
+    color: widgets.ColorPicker
+    opacity: widgets.FloatSlider
+    binary_mode: widgets.Checkbox | None
     box: widgets.VBox

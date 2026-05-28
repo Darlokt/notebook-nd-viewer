@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass
 from io import BytesIO
 from typing import TYPE_CHECKING
 
@@ -21,12 +22,25 @@ if TYPE_CHECKING:
     from nb_nd_viewer._types import (
         DisplayMode,
         ImageArray,
+        LabeledImageDisplayMode,
+        LabelKind,
         RenderDownsamplingMode,
         _AxisLayout,
         _DisplayLimits,
     )
 
 _DEFAULT_DPI = 120
+
+
+@dataclass(frozen=True)
+class LabelOverlay:
+    """One label overlay prepared for rendering."""
+
+    plane: ImageArray
+    kind: LabelKind
+    color: tuple[float, float, float]
+    opacity: float
+    binary_mode: bool
 
 
 def validate_max_render_pixels(max_render_pixels: int | None) -> None:
@@ -117,6 +131,119 @@ def draw_plane(  # noqa: PLR0913
     return fig
 
 
+def draw_labeled_plane(  # noqa: PLR0913
+    *,
+    plane: ImageArray,
+    layout: _AxisLayout,
+    mode: LabeledImageDisplayMode,
+    selected_channels: tuple[int, ...],
+    channel_names: tuple[str, ...],
+    limits: dict[int, _DisplayLimits],
+    label_overlays: tuple[LabelOverlay, ...],
+    figsize: tuple[float, float],
+    cmap: str,
+    integer_label_cmap: str,
+    max_render_pixels: int | None,
+    render_downsampling: RenderDownsamplingMode,
+) -> Figure:
+    """Draw an image plane with optional label overlays."""
+    fig, ax = plt.subplots(figsize=figsize)
+    _draw_labeled_image_base(
+        ax,
+        plane=plane,
+        layout=layout,
+        mode=mode,
+        selected_channels=selected_channels,
+        channel_names=channel_names,
+        limits=limits,
+        cmap=cmap,
+        max_render_pixels=max_render_pixels,
+        render_downsampling=render_downsampling,
+    )
+    base_extent = ax.images[0].get_extent() if ax.images else None
+    for overlay in label_overlays:
+        label_plane = downsample_for_render(overlay.plane, max_render_pixels, "nearest")
+        ax.imshow(_label_rgba(label_plane, overlay, integer_label_cmap), extent=base_extent)
+    _clean_axis(ax)
+    _tight_figure(fig)
+    return fig
+
+
+def _draw_labeled_image_base(  # noqa: PLR0913
+    ax: Axes,
+    *,
+    plane: ImageArray,
+    layout: _AxisLayout,
+    mode: LabeledImageDisplayMode,
+    selected_channels: tuple[int, ...],
+    channel_names: tuple[str, ...],
+    limits: dict[int, _DisplayLimits],
+    cmap: str,
+    max_render_pixels: int | None,
+    render_downsampling: RenderDownsamplingMode,
+) -> None:
+    """Draw the image base layer for the labeled image viewer."""
+    if layout.channel_axis is None:
+        _imshow(
+            ax,
+            move_display_axes_to_end(plane, layout, None),
+            cmap,
+            limits[0],
+            max_render_pixels=max_render_pixels,
+            render_downsampling=render_downsampling,
+        )
+        return
+
+    if mode == "overlay":
+        _imshow_white_overlay(
+            ax,
+            plane=plane,
+            layout=layout,
+            selected_channels=selected_channels,
+            limits=limits,
+            max_render_pixels=max_render_pixels,
+            render_downsampling=render_downsampling,
+        )
+        ax.set_title(", ".join(channel_names[index] for index in selected_channels))
+        return
+
+    channel_index = selected_channels[0]
+    _imshow(
+        ax,
+        extract_channel_plane(plane, layout, channel_index),
+        _channel_cmap((1.0, 1.0, 1.0)),
+        limits[channel_index],
+        max_render_pixels=max_render_pixels,
+        render_downsampling=render_downsampling,
+    )
+    ax.set_title(channel_names[channel_index])
+
+
+def _imshow_white_overlay(  # noqa: PLR0913
+    ax: Axes,
+    *,
+    plane: ImageArray,
+    layout: _AxisLayout,
+    selected_channels: tuple[int, ...],
+    limits: dict[int, _DisplayLimits],
+    max_render_pixels: int | None,
+    render_downsampling: RenderDownsamplingMode,
+) -> None:
+    """Draw selected image channels as a blended white intensity overlay."""
+    first = extract_channel_plane(plane, layout, selected_channels[0])
+    first = downsample_for_render(first, max_render_pixels, render_downsampling)
+    rgb = np.zeros((*first.shape, 3), dtype=np.float32)
+    for channel_index in selected_channels:
+        image = extract_channel_plane(plane, layout, channel_index)
+        channel = normalize_for_overlay(
+            downsample_for_render(image, max_render_pixels, render_downsampling),
+            limits[channel_index],
+        )
+        rgb += channel[..., np.newaxis]
+    np.clip(rgb, 0.0, 1.0, out=rgb)
+    ax.imshow(rgb)
+
+
 def _draw_overlay(  # noqa: PLR0913
     *,
     plane: ImageArray,
@@ -201,6 +328,52 @@ def _imshow(  # noqa: PLR0913
         ax.imshow(image, cmap=cmap)
         return
     ax.imshow(image, cmap=cmap, vmin=limits.vmin, vmax=limits.vmax)
+
+
+def _label_rgba(
+    label_plane: ImageArray,
+    overlay: LabelOverlay,
+    integer_label_cmap: str,
+) -> np.ndarray[tuple[int, ...], np.dtype[np.float32]]:
+    """Return an RGBA image for one label overlay."""
+    if overlay.kind == "binary" or overlay.binary_mode:
+        return _binary_label_rgba(label_plane, overlay.color, overlay.opacity)
+    return _integer_label_rgba(label_plane, overlay.opacity, integer_label_cmap)
+
+
+def _binary_label_rgba(
+    label_plane: ImageArray,
+    color: tuple[float, float, float],
+    opacity: float,
+) -> np.ndarray[tuple[int, ...], np.dtype[np.float32]]:
+    """Return an RGBA image for one binary label plane."""
+    mask = np.asarray(label_plane) != 0
+    rgba = np.zeros((*mask.shape, 4), dtype=np.float32)
+    rgba[mask, :3] = np.asarray(color, dtype=np.float32)
+    rgba[mask, 3] = np.float32(opacity)
+    return rgba
+
+
+def _integer_label_rgba(
+    label_plane: ImageArray,
+    opacity: float,
+    integer_label_cmap: str,
+) -> np.ndarray[tuple[int, ...], np.dtype[np.float32]]:
+    """Return an RGBA image for one integer-label plane."""
+    values = np.asarray(label_plane)
+    rgba = np.zeros((*values.shape, 4), dtype=np.float32)
+    foreground = values != 0
+    if not np.any(foreground):
+        return rgba
+
+    colormap = plt.get_cmap(integer_label_cmap)
+    color_count = getattr(colormap, "N", 256)
+    for value in np.unique(values[foreground]):
+        value_mask = values == value
+        color_index = int(value) % color_count
+        rgba[value_mask, :3] = colormap(color_index)[:3]
+        rgba[value_mask, 3] = np.float32(opacity)
+    return rgba
 
 
 def _clean_axis(ax: Axes) -> None:

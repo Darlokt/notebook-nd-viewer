@@ -9,7 +9,7 @@ import matplotlib.colors as mcolors
 import numpy as np
 
 from nb_nd_viewer._ranges import absolute_display_range, clamp, finite_min_max, slider_step
-from nb_nd_viewer._types import _AxisLayout, _ChannelControls
+from nb_nd_viewer._types import _AxisLayout, _ChannelControls, _LabelControls
 
 if TYPE_CHECKING:
     from nb_nd_viewer._types import ImageArray
@@ -79,6 +79,27 @@ def make_display_mode() -> widgets.ToggleButtons:
             style=_description_style(),
         ),
         "Choose how selected channels are rendered.",
+    )
+
+
+def make_labeled_image_display_mode() -> widgets.ToggleButtons:
+    """Return the image display mode selector for the labeled image viewer."""
+    return _with_tooltip(
+        widgets.ToggleButtons(
+            options=[
+                ("Single", "single"),
+                ("Overlay", "overlay"),
+            ],
+            value="single",
+            description="Mode",
+            tooltips=[
+                "Show the first selected image channel.",
+                "Blend all selected image channels as white intensity layers.",
+            ],
+            layout=_control_layout(),
+            style=_description_style(),
+        ),
+        "Choose how selected image channels are rendered.",
     )
 
 
@@ -187,6 +208,89 @@ def make_channel_controls(
     return controls
 
 
+def make_label_selector(label_names: tuple[str, ...]) -> widgets.SelectMultiple:
+    """Return the label picker for overlay rendering."""
+    return _with_tooltip(
+        widgets.SelectMultiple(
+            options=[(name, index) for index, name in enumerate(label_names)],
+            value=tuple(range(len(label_names))),
+            description="Labels",
+            rows=min(max(len(label_names), 1), 8),
+            layout=_control_layout(),
+            style=_description_style(),
+        ),
+        "Select every label that should be visible as an overlay.",
+    )
+
+
+def make_label_controls(
+    name: str,
+    kind: str,
+    color: tuple[float, float, float],
+    opacity: float,
+    *,
+    continuous_update: bool,
+) -> _LabelControls:
+    """Return display controls for one label overlay."""
+    color_picker = _with_tooltip(
+        widgets.ColorPicker(
+            concise=False,
+            description="Color",
+            value=mcolors.to_hex(color),
+            layout=_control_layout(),
+            style=_description_style(),
+        ),
+        f"Foreground color for {name} in binary display.",
+    )
+    opacity_slider = _with_tooltip(
+        widgets.FloatSlider(
+            value=opacity,
+            min=0.0,
+            max=1.0,
+            step=0.05,
+            description="Opacity",
+            continuous_update=continuous_update,
+            readout=True,
+            readout_format=".2f",
+            layout=_control_layout(),
+            style=_description_style(),
+        ),
+        f"Overlay opacity for {name}.",
+    )
+    binary_mode = None
+    if kind == "integer":
+        binary_mode = _with_tooltip(
+            widgets.Checkbox(
+                value=False,
+                description="Binary mode",
+                indent=False,
+                layout=_control_layout(),
+            ),
+            f"Render every nonzero value in {name} as one binary foreground mask.",
+        )
+
+    header = widgets.HTML(
+        value=f'<strong title="Label display settings for {name}.">{name}</strong>'
+    )
+    box = widgets.VBox([], layout=widgets.Layout(grid_gap="6px"))
+    controls = _LabelControls(
+        color=color_picker,
+        opacity=opacity_slider,
+        binary_mode=binary_mode,
+        box=box,
+    )
+    _sync_label_box(controls, header)
+
+    if binary_mode is not None:
+
+        def on_binary_mode_change(change: dict[str, object]) -> None:
+            if change["name"] == "value":
+                _sync_label_box(controls, header)
+
+        binary_mode.observe(on_binary_mode_change, names="value")
+    return controls
+
+
 def sync_visible_settings(
     settings_box: widgets.VBox,
     settings: dict[int, _ChannelControls],
@@ -196,6 +300,15 @@ def sync_visible_settings(
     settings_box.children = tuple(
         settings[channel_index].box for channel_index in selected_channels
     )
+
+
+def sync_visible_label_settings(
+    settings_box: widgets.VBox,
+    settings: dict[int, _LabelControls],
+    selected_labels: tuple[int, ...],
+) -> None:
+    """Show settings only for labels currently selected for rendering."""
+    settings_box.children = tuple(settings[label_index].box for label_index in selected_labels)
 
 
 def _sync_channel_box(controls: _ChannelControls, header: widgets.HTML) -> None:
@@ -211,6 +324,17 @@ def _sync_channel_box(controls: _ChannelControls, header: widgets.HTML) -> None:
     elif controls.mode.value == "percentile":
         children.append(controls.percentile)
     controls.absolute.disabled = bool(controls.absolute_slice_minmax.value)
+    controls.box.children = tuple(children)
+
+
+def _sync_label_box(controls: _LabelControls, header: widgets.HTML) -> None:
+    """Show controls relevant to one label's active display mode."""
+    children: list[widgets.Widget] = [header]
+    if controls.binary_mode is not None:
+        children.append(controls.binary_mode)
+    if controls.binary_mode is None or controls.binary_mode.value:
+        children.append(controls.color)
+    children.append(controls.opacity)
     controls.box.children = tuple(children)
 
 

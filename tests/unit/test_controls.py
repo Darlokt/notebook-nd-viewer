@@ -7,6 +7,9 @@ import numpy as np
 from nb_nd_viewer._controls import (
     make_axis_sliders,
     make_channel_controls,
+    make_label_controls,
+    make_label_selector,
+    make_labeled_image_display_mode,
     set_absolute_to_slice_minmax,
     sync_absolute_range,
 )
@@ -88,6 +91,58 @@ class TestMakeChannelControls:
         assert controls.percentile in controls.box.children
         assert controls.absolute not in controls.box.children
         assert controls.absolute_slice_minmax not in controls.box.children
+
+
+class TestMakeLabeledImageDisplayMode:
+    """Tests for labeled image display mode construction."""
+
+    def test_excludes_side_by_side_mode(self) -> None:
+        mode = make_labeled_image_display_mode()
+
+        assert tuple(value for _label, value in mode.options) == ("single", "overlay")
+
+
+class TestMakeLabelSelector:
+    """Tests for label selector construction."""
+
+    def test_selects_all_labels_by_default(self) -> None:
+        selector = make_label_selector(("A", "B"))
+
+        assert selector.value == (0, 1)
+
+
+class TestMakeLabelControls:
+    """Tests for label display control construction."""
+
+    def test_binary_labels_show_color_and_opacity(self) -> None:
+        controls = make_label_controls(
+            "Mask",
+            "binary",
+            (1.0, 0.0, 0.0),
+            0.5,
+            continuous_update=False,
+        )
+
+        assert controls.binary_mode is None
+        assert controls.color in controls.box.children
+        assert controls.opacity in controls.box.children
+
+    def test_integer_labels_hide_binary_color_until_binary_mode(self) -> None:
+        controls = make_label_controls(
+            "Instances",
+            "integer",
+            (1.0, 0.0, 0.0),
+            0.5,
+            continuous_update=False,
+        )
+
+        assert controls.binary_mode is not None
+        assert controls.binary_mode in controls.box.children
+        assert controls.color not in controls.box.children
+
+        controls.binary_mode.value = True
+
+        assert controls.color in controls.box.children
 
 
 class TestSyncAbsoluteRange:

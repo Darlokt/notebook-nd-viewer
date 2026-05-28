@@ -25,6 +25,8 @@ The public Python import package is `nb_nd_viewer`.
   overlays, or side by side.
 - Configure channel names and Matplotlib-compatible channel colors.
 - Adjust display contrast with absolute min/max or percentile thresholds.
+- Overlay binary masks or integer labels with independent label display
+  settings.
 - Downsample large rendered planes by default to keep notebook interaction
   responsive.
 
@@ -66,7 +68,7 @@ make sure that `ipywidgets` is enabled for that environment.
 ```python
 import numpy as np
 
-from nb_nd_viewer import view_image_layers
+from nb_nd_viewer import view_image_layers, view_labeled_image
 
 image = np.random.default_rng(0).normal(size=(12, 256, 256))
 
@@ -113,6 +115,65 @@ view_image_layers(
 Set `max_render_pixels=None` or `render_downsampling="none"` to render every
 source pixel.
 
+Use `view_labeled_image` to inspect images with label overlays:
+
+```python
+image = np.random.default_rng(0).normal(size=(8, 3, 256, 256))
+labels = np.zeros((256, 256), dtype=bool)
+labels[80:180, 90:190] = True
+
+view_labeled_image(
+    image,
+    axis_order="ZCYX",
+    labels=labels,
+    label_axis_order="YX",
+    channel_names=("DAPI", "Actin", "Tubulin"),
+    label_names=("Region",),
+)
+```
+
+Label arrays may omit image stack axes. In the example above, the 2D `YX` mask
+is overlaid on every `Z` slice. Multiple binary masks can be stored in one label
+array by marking a label channel axis with `C`:
+
+```python
+labels = np.zeros((2, 256, 256), dtype=bool)
+labels[0, 80:180, 90:190] = True
+labels[1, 100:140, 120:220] = True
+
+view_labeled_image(
+    image,
+    axis_order="ZCYX",
+    labels=labels,
+    label_axis_order="CYX",
+    label_names=("Nuclei", "Cells"),
+    label_colors=("cyan", "magenta"),
+    label_opacities=(0.4, 0.6),
+)
+```
+
+Integer labels are rendered with categorical colors from `tab20` by default,
+with label value `0` treated as transparent background:
+
+```python
+instance_labels = np.zeros((256, 256), dtype=np.uint16)
+instance_labels[40:100, 40:100] = 1
+instance_labels[130:210, 150:230] = 2
+
+view_labeled_image(
+    image,
+    axis_order="ZCYX",
+    labels=instance_labels,
+    label_axis_order="YX",
+    label_names=("Instances",),
+    integer_label_cmap="tab20",
+)
+```
+
+Label overlays use the same render pixel budget as image planes, but labels are
+always downsampled with nearest-neighbor sampling so binary masks and integer
+IDs remain categorical.
+
 ## API
 
 ```python
@@ -123,6 +184,27 @@ view_image_layers(
     channel_colors=None,
     figsize=(6, 6),
     cmap="gray",
+    *,
+    continuous_update=False,
+    max_render_pixels=1_000_000,
+    render_downsampling="stride",
+)
+```
+
+```python
+view_labeled_image(
+    image,
+    axis_order,
+    labels=None,
+    label_axis_order=None,
+    channel_names=None,
+    label_names=None,
+    label_colors=None,
+    label_opacities=0.5,
+    label_kinds="auto",
+    figsize=(6, 6),
+    cmap="gray",
+    integer_label_cmap="tab20",
     *,
     continuous_update=False,
     max_render_pixels=1_000_000,
@@ -145,6 +227,19 @@ Parameters:
   disable pixel-count based downsampling.
 - `render_downsampling`: one of `"stride"`, `"nearest"`, `"bilinear"`,
   `"bicubic"`, or `"none"`.
+
+Additional `view_labeled_image` parameters:
+
+- `labels`: optional bool or integer label array.
+- `label_axis_order`: axis labels matching `labels.ndim`; required when labels
+  are provided. Use `C` for a label channel axis.
+- `label_names`: optional names for expanded label entries.
+- `label_colors`: optional Matplotlib-compatible colors for binary label
+  rendering.
+- `label_opacities`: one opacity for all labels or one value per label.
+- `label_kinds`: `"auto"`, `"binary"`, or `"integer"` for all labels, or one
+  value per label.
+- `integer_label_cmap`: Matplotlib colormap used for integer label IDs.
 
 ## Development
 

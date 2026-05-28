@@ -8,7 +8,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
+import nb_nd_viewer._rendering as rendering
 from nb_nd_viewer._rendering import (
+    LabelOverlay,
+    draw_labeled_plane,
     draw_plane,
     figure_html,
     validate_max_render_pixels,
@@ -197,6 +200,228 @@ class TestDrawPlane:
 
         try:
             assert [axis.get_title() for axis in fig.axes] == ["A", "B"]
+        finally:
+            plt.close(fig)
+
+
+class TestDrawLabeledPlane:
+    """Tests for labeled image rendering."""
+
+    def test_draws_channel_overlay_as_white_rgb_image(self) -> None:
+        layout = _AxisLayout(
+            axis_order="CYX",
+            channel_axis=0,
+            display_axes=(1, 2),
+            slider_axes=(),
+        )
+
+        fig = draw_labeled_plane(
+            plane=np.ones((2, 2, 2)),
+            layout=layout,
+            mode="overlay",
+            selected_channels=(0, 1),
+            channel_names=("A", "B"),
+            limits={
+                0: _DisplayLimits(vmin=0.0, vmax=1.0),
+                1: _DisplayLimits(vmin=0.0, vmax=1.0),
+            },
+            label_overlays=(),
+            figsize=(2.0, 2.0),
+            cmap="gray",
+            integer_label_cmap="tab20",
+            max_render_pixels=None,
+            render_downsampling="stride",
+        )
+
+        try:
+            image = fig.axes[0].images[0].get_array()
+            assert image is not None
+            assert image.shape == (2, 2, 3)
+            np.testing.assert_allclose(image, np.ones((2, 2, 3)))
+        finally:
+            plt.close(fig)
+
+    def test_draws_binary_label_overlay_with_requested_alpha(self) -> None:
+        layout = _AxisLayout("YX", None, (0, 1), ())
+
+        fig = draw_labeled_plane(
+            plane=np.zeros((2, 2)),
+            layout=layout,
+            mode="single",
+            selected_channels=(0,),
+            channel_names=(),
+            limits={0: _DisplayLimits(vmin=0.0, vmax=1.0)},
+            label_overlays=(
+                LabelOverlay(
+                    plane=np.array([[0, 1], [1, 0]], dtype=np.uint8),
+                    kind="binary",
+                    color=(1.0, 0.0, 0.0),
+                    opacity=0.5,
+                    binary_mode=False,
+                ),
+            ),
+            figsize=(2.0, 2.0),
+            cmap="gray",
+            integer_label_cmap="tab20",
+            max_render_pixels=None,
+            render_downsampling="stride",
+        )
+
+        try:
+            overlay = fig.axes[0].images[1].get_array()
+            assert overlay is not None
+            assert overlay[0, 0, 3] == 0.0
+            assert overlay[0, 1, 3] == 0.5
+            np.testing.assert_allclose(overlay[0, 1, :3], np.array([1.0, 0.0, 0.0]))
+        finally:
+            plt.close(fig)
+
+    def test_draws_integer_label_zero_as_transparent(self) -> None:
+        layout = _AxisLayout("YX", None, (0, 1), ())
+
+        fig = draw_labeled_plane(
+            plane=np.zeros((2, 2)),
+            layout=layout,
+            mode="single",
+            selected_channels=(0,),
+            channel_names=(),
+            limits={0: _DisplayLimits(vmin=0.0, vmax=1.0)},
+            label_overlays=(
+                LabelOverlay(
+                    plane=np.array([[0, 1], [2, 0]], dtype=np.uint8),
+                    kind="integer",
+                    color=(1.0, 0.0, 0.0),
+                    opacity=0.75,
+                    binary_mode=False,
+                ),
+            ),
+            figsize=(2.0, 2.0),
+            cmap="gray",
+            integer_label_cmap="tab20",
+            max_render_pixels=None,
+            render_downsampling="stride",
+        )
+
+        try:
+            overlay = fig.axes[0].images[1].get_array()
+            assert overlay is not None
+            assert overlay[0, 0, 3] == 0.0
+            assert overlay[0, 1, 3] == 0.75
+            assert overlay[1, 0, 3] == 0.75
+        finally:
+            plt.close(fig)
+
+    def test_integer_binary_mode_draws_nonzero_as_binary_mask(self) -> None:
+        layout = _AxisLayout("YX", None, (0, 1), ())
+
+        fig = draw_labeled_plane(
+            plane=np.zeros((2, 2)),
+            layout=layout,
+            mode="single",
+            selected_channels=(0,),
+            channel_names=(),
+            limits={0: _DisplayLimits(vmin=0.0, vmax=1.0)},
+            label_overlays=(
+                LabelOverlay(
+                    plane=np.array([[0, 5], [2, 0]], dtype=np.uint8),
+                    kind="integer",
+                    color=(0.0, 1.0, 0.0),
+                    opacity=0.25,
+                    binary_mode=True,
+                ),
+            ),
+            figsize=(2.0, 2.0),
+            cmap="gray",
+            integer_label_cmap="tab20",
+            max_render_pixels=None,
+            render_downsampling="stride",
+        )
+
+        try:
+            overlay = fig.axes[0].images[1].get_array()
+            assert overlay is not None
+            np.testing.assert_allclose(overlay[0, 1], np.array([0.0, 1.0, 0.0, 0.25]))
+            np.testing.assert_allclose(overlay[1, 0], np.array([0.0, 1.0, 0.0, 0.25]))
+        finally:
+            plt.close(fig)
+
+    def test_overlapping_binary_labels_draw_in_selected_order(self) -> None:
+        layout = _AxisLayout("YX", None, (0, 1), ())
+
+        fig = draw_labeled_plane(
+            plane=np.zeros((2, 2)),
+            layout=layout,
+            mode="single",
+            selected_channels=(0,),
+            channel_names=(),
+            limits={0: _DisplayLimits(vmin=0.0, vmax=1.0)},
+            label_overlays=(
+                LabelOverlay(
+                    plane=np.ones((2, 2), dtype=np.uint8),
+                    kind="binary",
+                    color=(1.0, 0.0, 0.0),
+                    opacity=0.5,
+                    binary_mode=False,
+                ),
+                LabelOverlay(
+                    plane=np.ones((2, 2), dtype=np.uint8),
+                    kind="binary",
+                    color=(0.0, 1.0, 0.0),
+                    opacity=0.5,
+                    binary_mode=False,
+                ),
+            ),
+            figsize=(2.0, 2.0),
+            cmap="gray",
+            integer_label_cmap="tab20",
+            max_render_pixels=None,
+            render_downsampling="stride",
+        )
+
+        try:
+            first_overlay = fig.axes[0].images[1].get_array()
+            second_overlay = fig.axes[0].images[2].get_array()
+            assert first_overlay is not None
+            assert second_overlay is not None
+            np.testing.assert_allclose(first_overlay[0, 0, :3], np.array([1.0, 0.0, 0.0]))
+            np.testing.assert_allclose(second_overlay[0, 0, :3], np.array([0.0, 1.0, 0.0]))
+        finally:
+            plt.close(fig)
+
+    @pytest.mark.parametrize("mode", ["stride", "bilinear", "bicubic"])
+    def test_label_downsampling_always_uses_nearest(
+        self,
+        mode: RenderDownsamplingMode,
+        mocker: MockerFixture,
+    ) -> None:
+        layout = _AxisLayout("YX", None, (0, 1), ())
+        spy = mocker.spy(rendering, "downsample_for_render")
+
+        fig = draw_labeled_plane(
+            plane=np.zeros((10, 10)),
+            layout=layout,
+            mode="single",
+            selected_channels=(0,),
+            channel_names=(),
+            limits={0: _DisplayLimits(vmin=0.0, vmax=1.0)},
+            label_overlays=(
+                LabelOverlay(
+                    plane=np.arange(100).reshape(10, 10),
+                    kind="integer",
+                    color=(1.0, 0.0, 0.0),
+                    opacity=0.5,
+                    binary_mode=False,
+                ),
+            ),
+            figsize=(2.0, 2.0),
+            cmap="gray",
+            integer_label_cmap="tab20",
+            max_render_pixels=25,
+            render_downsampling=mode,
+        )
+
+        try:
+            assert spy.call_args_list[-1].args[2] == "nearest"
         finally:
             plt.close(fig)
 
